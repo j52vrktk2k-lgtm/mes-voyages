@@ -1,0 +1,1337 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Voyages">
+<meta name="theme-color" content="#060a18">
+<title>Mes Voyages</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="countries.js"></script>
+<style>
+:root{
+  --bg:#060a18; --panel:#0e1530; --panel2:#151e3f; --text:#eef2ff; --muted:#8b95b8;
+  --line:rgba(255,255,255,.08); --accent:#ff7a59; --accent2:#ff4f8b; --ok:#8dffa8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;overscroll-behavior:none;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;-webkit-user-select:none;user-select:none}
+input,select{font:inherit;font-size:16px;color:var(--text)}
+a{color:#9fc7ff}
+
+header.top{padding:calc(env(safe-area-inset-top) + 12px) 16px 8px;display:flex;align-items:center;gap:14px}
+.ring{width:54px;height:54px;flex:none;position:relative}
+.ring svg{transform:rotate(-90deg)}
+.ring b{position:absolute;inset:0;display:grid;place-items:center;font-size:12px;font-weight:700}
+.top .txt{flex:1;min-width:0}
+.top h1{margin:0;font-size:22px;letter-spacing:-.02em}
+.top .sub{color:var(--muted);font-size:13px}
+.top .sub strong{color:var(--text)}
+.iconbtn{position:relative;width:40px;height:40px;border-radius:50%;background:var(--panel);font-size:18px;flex:none}
+.iconbtn .dot{position:absolute;right:6px;top:6px;width:9px;height:9px;border-radius:50%;background:var(--muted);box-shadow:0 0 0 2px var(--panel)}
+.dot.ok{background:var(--ok)}.dot.busy{background:#ffcf6b;animation:blink 1s infinite}.dot.err{background:#ff6b6b}.dot.off{display:none}
+@keyframes blink{50%{opacity:.3}}
+
+.map-wrap{position:relative;height:min(56vh,560px);min-height:320px;touch-action:none}
+canvas#map{width:100%;height:100%;display:block}
+.switch{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;padding:4px;border-radius:999px;
+  background:rgba(14,21,48,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line)}
+.switch button{position:relative;z-index:1;white-space:nowrap;padding:7px 14px;font-size:13px;font-weight:600;color:var(--muted);transition:color .3s}
+.switch button.on{color:#fff}
+.switch .pill{position:absolute;top:4px;bottom:4px;left:4px;border-radius:999px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));transition:transform .45s cubic-bezier(.3,1.3,.5,1),width .45s}
+.heatbtn{position:absolute;top:10px;right:12px;width:38px;height:38px;border-radius:50%;font-size:17px;
+  background:rgba(14,21,48,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);transition:all .3s}
+.heatbtn.on{background:linear-gradient(135deg,#ffb15c,#d7263d);border-color:transparent}
+.legend{position:absolute;left:12px;top:58px;padding:8px 10px;border-radius:12px;font-size:11px;color:var(--muted);
+  background:rgba(14,21,48,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--line);
+  opacity:0;transform:translateY(-6px);transition:all .3s;pointer-events:none}
+.legend.show{opacity:1;transform:none}
+.legend i{display:block;width:110px;height:6px;border-radius:3px;margin:5px 0 3px;background:linear-gradient(90deg,#ffe08a,#ff9a3c,#e8384f,#8b1d5e)}
+.legend div{display:flex;justify-content:space-between}
+.hint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:11px;color:var(--muted);pointer-events:none;transition:opacity .4s}
+
+.hud{position:absolute;left:12px;right:12px;bottom:12px;padding:12px 14px;border-radius:16px;
+  background:rgba(14,21,48,.82);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);
+  transform:translateY(130%);opacity:0;transition:transform .5s cubic-bezier(.2,1.2,.4,1),opacity .3s}
+.hud.show{transform:none;opacity:1}
+.hud .row{display:flex;align-items:center;gap:10px}
+.hud .em{font-size:24px}
+.hud .route{flex:1;min-width:0}
+.hud .route b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud .route span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hud .km{font-variant-numeric:tabular-nums;font-weight:700;text-align:right;white-space:nowrap}
+.hud .km small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.hud .bar{height:3px;border-radius:3px;background:var(--line);margin-top:10px;overflow:hidden}
+.hud .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.hud .x{width:30px;height:30px;border-radius:50%;background:var(--line);flex:none}
+
+nav.tabs{position:sticky;top:0;z-index:5;display:flex;gap:6px;padding:10px 16px;background:linear-gradient(var(--bg) 70%,transparent)}
+nav.tabs button{flex:1;padding:10px;border-radius:12px;font-weight:600;color:var(--muted);background:var(--panel)}
+nav.tabs button.on{color:#fff;background:var(--panel2);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+main{padding:4px 16px calc(env(safe-area-inset-bottom) + 100px);max-width:720px;margin:0 auto}
+.view{display:none}.view.on{display:block;animation:fade .35s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.trip{position:relative;padding:14px;border-radius:18px;background:var(--panel);border:1px solid var(--line);margin-bottom:10px;overflow:hidden}
+.trip:active{transform:scale(.985)}
+.trip h3{margin:0 0 2px;font-size:17px;display:flex;align-items:center;gap:8px;padding-right:80px}
+.trip .flags{font-size:16px;letter-spacing:2px}
+.trip .dates{color:var(--muted);font-size:12px}
+.trip .path{margin:8px 0;font-size:13px;color:#c9d0ec}
+.trip .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{font-size:12px;padding:4px 8px;border-radius:999px;background:var(--panel2)}
+.trip .acts{position:absolute;top:10px;right:10px;display:flex;gap:6px}
+.trip .acts button{width:34px;height:34px;border-radius:50%;background:var(--panel2);font-size:14px}
+.trip .acts .play{background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.empty{text-align:center;color:var(--muted);padding:30px 10px}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.card{padding:14px;border-radius:18px;background:var(--panel);border:1px solid var(--line)}
+.card .lbl{font-size:12px;color:var(--muted)}
+.card .val{font-size:26px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.card .val small{font-size:13px;font-weight:600;color:var(--muted)}
+.card.wide{grid-column:span 2}
+.modes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:6px}
+.modes div{text-align:center;padding:10px 4px;border-radius:14px;background:var(--panel2)}
+.modes .e{font-size:22px}.modes .n{font-weight:800;font-size:18px}.modes .k{font-size:11px;color:var(--muted)}
+h2{font-size:15px;margin:24px 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.conts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cont{padding:12px;border-radius:16px;background:var(--panel);border:1px solid var(--line);opacity:.45;transition:opacity .3s}
+.cont.on{opacity:1;border-color:rgba(255,122,89,.35)}
+.cont .h{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+.cont .h span{font-size:20px}
+.cont .s{font-size:12px;color:var(--muted);margin:4px 0 6px}
+.meter{height:5px;border-radius:5px;background:var(--line);overflow:hidden}
+.meter i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),var(--accent2));transform-origin:left;animation:grow .9s cubic-bezier(.2,1,.3,1) both}
+@keyframes grow{from{transform:scaleX(0)}}
+.years{display:flex;flex-direction:column;gap:8px}
+.year{padding:12px 14px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.year .h{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+.year .y{font-size:20px;font-weight:800}
+.year .k{margin-left:auto;font-weight:700;font-variant-numeric:tabular-nums}
+.year .meter{height:8px;margin-bottom:8px}
+.year .chips{display:flex;flex-wrap:wrap;gap:6px}
+.rank{display:flex;flex-direction:column;gap:6px}
+.rank .r{display:grid;grid-template-columns:22px 26px 1fr auto;align-items:center;gap:8px;padding:8px 12px;border-radius:14px;background:var(--panel)}
+.rank .n{color:var(--muted);font-size:12px;text-align:center}
+.rank .f{font-size:20px}
+.rank .nm{font-size:14px}
+.rank .nm .meter{margin-top:4px;height:4px}
+.rank .v{font-weight:700;font-size:13px;white-space:nowrap}
+.facts{display:flex;flex-direction:column;gap:8px}
+.fact{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.fact .i{font-size:22px}
+.countries{display:flex;flex-wrap:wrap;gap:6px}
+.btns{display:flex;gap:8px;margin-top:10px}
+.btn{flex:1;padding:12px;border-radius:14px;background:var(--panel2);font-weight:600;text-align:center}
+.btn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.btn.danger{color:#ff8a8a}
+.btn:disabled{opacity:.6}
+
+.fab{position:fixed;right:18px;bottom:calc(env(safe-area-inset-bottom) + 18px);z-index:20;width:60px;height:60px;border-radius:50%;
+  font-size:30px;font-weight:300;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));
+  box-shadow:0 10px 30px rgba(255,90,120,.4);transition:transform .2s}
+.fab:active{transform:scale(.92)}
+
+.sheet-bg{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .3s}
+.sheet-bg.show{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-width:720px;margin:0 auto;max-height:92vh;overflow:auto;-webkit-overflow-scrolling:touch;
+  padding:8px 16px calc(env(safe-area-inset-bottom) + 20px);border-radius:24px 24px 0 0;background:#0b1128;border-top:1px solid var(--line);
+  transform:translateY(105%);transition:transform .45s cubic-bezier(.2,1,.3,1)}
+.sheet.show{transform:none}
+.sheet .grab{width:40px;height:5px;border-radius:5px;background:var(--line);margin:4px auto 12px}
+.sheet h3{margin:0 0 12px;font-size:20px}
+.sheet h4{margin:20px 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.sheet p{margin:6px 0;font-size:14px;color:#c9d0ec}
+.sheet ol{margin:6px 0;padding-left:20px;font-size:14px;color:#c9d0ec}
+.sheet ol li{margin:4px 0}
+.field{display:block;margin-bottom:10px}
+.field span{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.field input,.field select{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--panel);outline:none}
+.field input:focus{border-color:rgba(255,122,89,.6)}
+.seg{position:relative;padding:12px;border-radius:16px;background:var(--panel);border:1px solid var(--line);margin-bottom:10px}
+.seg .head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.seg .num{font-size:12px;color:var(--muted);margin-right:auto}
+.seg .mode{width:40px;height:36px;border-radius:10px;background:var(--panel2);font-size:18px;opacity:.45;transition:all .2s}
+.seg .mode.on{opacity:1;box-shadow:inset 0 0 0 2px var(--accent)}
+.seg .del{width:30px;height:30px;border-radius:50%;background:var(--panel2);color:#ff8a8a}
+.seg .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg .field input{background:var(--panel2)}
+.ac{position:relative}
+.ac input.ok{border-color:rgba(141,255,168,.5)}
+.sugg{position:absolute;left:0;right:0;top:100%;z-index:5;margin:4px 0 0;padding:4px;list-style:none;border-radius:12px;min-width:220px;
+  background:#1b2550;border:1px solid var(--line);box-shadow:0 10px 30px rgba(0,0,0,.5);max-height:240px;overflow:auto}
+.seg .two .ac:last-child .sugg{left:auto;right:0}
+.sugg li{padding:10px;border-radius:8px;font-size:14px}
+.sugg li:active,.sugg li:hover{background:rgba(255,255,255,.08)}
+.sugg li small{color:var(--muted)}
+.syncbox{padding:12px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.qr{display:grid;place-items:center;padding:14px;margin-top:10px;border-radius:16px;background:#fff}
+.qr img,.qr svg{width:200px;height:200px;image-rendering:pixelated}
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 14px);z-index:50;transform:translate(-50%,-150%);padding:10px 16px;border-radius:999px;
+  background:#1b2550;border:1px solid var(--line);font-size:14px;transition:transform .4s cubic-bezier(.2,1.2,.4,1);white-space:nowrap}
+.toast.show{transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="ring">
+    <svg width="54" height="54" viewBox="0 0 54 54">
+      <defs><linearGradient id="rg" x1="0" x2="1"><stop offset="0" stop-color="#ff7a59"/><stop offset="1" stop-color="#ff4f8b"/></linearGradient></defs>
+      <circle cx="27" cy="27" r="23" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="6"/>
+      <circle id="ringArc" cx="27" cy="27" r="23" fill="none" stroke="url(#rg)" stroke-width="6" stroke-linecap="round" stroke-dasharray="0 999"/>
+    </svg>
+    <b id="ringPct">0%</b>
+  </div>
+  <div class="txt">
+    <h1>Mes voyages</h1>
+    <div class="sub"><strong id="hCountries">0</strong> pays · <strong id="hKm">0</strong> km · <strong id="hTours">0</strong> × 🌍</div>
+  </div>
+  <button class="iconbtn" id="settingsBtn" aria-label="Réglages">⚙️<span class="dot off" id="syncDot"></span></button>
+</header>
+
+<section class="map-wrap" id="mapWrap">
+  <canvas id="map"></canvas>
+  <div class="switch" id="projSwitch">
+    <div class="pill"></div>
+    <button data-mode="globe" class="on">🌍 Globe</button>
+    <button data-mode="flat">🗺️ Planisphère</button>
+  </div>
+  <button class="heatbtn" id="heatBtn" aria-label="Carte de chaleur">🔥</button>
+  <div class="legend" id="legend">Jours passés<i></i><div><span id="legMin">1</span><span id="legMax">—</span></div></div>
+  <div class="hint" id="hint">Glissez pour tourner · pincez pour zoomer · touchez un pays pour le marquer</div>
+  <div class="hud" id="hud">
+    <div class="row">
+      <div class="em" id="hudEm">✈️</div>
+      <div class="route"><b id="hudRoute">—</b><span id="hudSub"></span></div>
+      <div class="km"><span id="hudKm">0</span> km<small id="hudTrip"></small></div>
+      <button class="x" id="hudClose" aria-label="Fermer">✕</button>
+    </div>
+    <div class="bar"><i id="hudBar"></i></div>
+  </div>
+</section>
+
+<nav class="tabs">
+  <button class="on" data-tab="trips">Voyages</button>
+  <button data-tab="stats">Statistiques</button>
+</nav>
+
+<main>
+  <section class="view on" id="v-trips"><div id="tripList"></div></section>
+  <section class="view" id="v-stats"></section>
+</main>
+
+<button class="fab" id="fab" aria-label="Nouveau voyage">+</button>
+
+<div class="sheet-bg" id="sheetBg"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="importFile" accept="application/json" hidden>
+
+<script>
+/* ============================================================
+   Constantes & pays
+   ============================================================ */
+const KEY = 'voyage.v1', SYNC_KEY = 'voyage.sync', GIST_FILE = 'voyages-sync.json';
+const EARTH_KM = 40075, MOON_KM = 384400, WORLD_COUNTRIES = 195;
+const MODES = {
+  plane: { e: '✈️', label: 'Avion',   color: '#7cc4ff', speed: 850 },
+  train: { e: '🚄', label: 'Train',   color: '#8dffa8', speed: 160 },
+  car:   { e: '🚗', label: 'Voiture', color: '#ffcf6b', speed: 85 },
+  boat:  { e: '⛴️', label: 'Bateau',  color: '#c3a6ff', speed: 35 },
+};
+const CONTINENTS = {
+  EU: ['Europe', '🏰'], AS: ['Asie', '🏯'], AF: ['Afrique', '🦁'], NA: ['Amérique du Nord', '🗽'],
+  SA: ['Amérique du Sud', '🦙'], OC: ['Océanie', '🦘'], AN: ['Antarctique', '🐧'],
+};
+const SRC_LABEL = { rail: 'tracé ferroviaire', road: 'itinéraire routier', direct: 'ligne directe' };
+
+// Table pays : code ISO-2 -> { name, cont, num, terr }
+const COUNTRIES = {}, NUM2A = {};
+for (const row of COUNTRY_TABLE.split(';')) {
+  const [a2, rest] = [row.slice(0, 2), row.slice(3)];
+  const [name, cont, num, t] = rest.split('|');
+  COUNTRIES[a2] = { name, cont, num, terr: t === 't' };
+  if (num) NUM2A[num] = a2;
+}
+Object.assign(COUNTRIES.RU, { cont: 'EU' });
+const RENAME = { US: 'États-Unis', BN: 'Brunei', TZ: 'Tanzanie', VA: 'Vatican', CZ: 'Tchéquie', CF: 'Centrafrique', SZ: 'Eswatini',
+  AE: 'Émirats arabes unis', SA: 'Arabie saoudite', DO: 'République dominicaine', CD: 'RD Congo', CG: 'Congo', IO: 'Territoire britannique de l\'océan Indien' };
+for (const [k, v] of Object.entries(RENAME)) COUNTRIES[k].name = v;
+const NOID = { 'Somaliland': 'SO', 'Kosovo': 'XK', 'N. Cyprus': 'CY', 'Indian Ocean Ter.': 'AU', 'Siachen Glacier': 'IN' };
+const cName = k => COUNTRIES[k]?.name || k;
+
+const HOME = { name: 'Marseille', country: 'France', cc: 'FR', lat: 43.2965, lon: 5.3698 };
+const P = (name, country, cc, lat, lon) => ({ name, country, cc, lat, lon });
+
+/* ============================================================
+   Données
+   ============================================================ */
+function seed() {
+  const tokyo = P('Tokyo', 'Japon', 'JP', 35.6762, 139.6503),
+        kyoto = P('Kyoto', 'Japon', 'JP', 35.0116, 135.7681),
+        osaka = P('Osaka', 'Japon', 'JP', 34.6937, 135.5023);
+  return {
+    v: 2, home: HOME, homeT: 0, deleted: {}, manual: {},
+    trips: [{
+      id: 'exemple-japon', name: 'Japon', example: true, updatedAt: 1,
+      segs: [
+        { mode: 'plane', from: HOME,  to: tokyo, date: '2025-04-02' },
+        { mode: 'train', from: tokyo, to: kyoto, date: '2025-04-08' },
+        { mode: 'train', from: kyoto, to: osaka, date: '2025-04-12' },
+        { mode: 'plane', from: osaka, to: HOME,  date: '2025-04-16' },
+      ],
+    }],
+  };
+}
+function migrate(d) {
+  if (!d || typeof d !== 'object') return seed();
+  if (d.v === 2) return { deleted: {}, manual: {}, homeT: 0, ...d };
+  // v1 -> v2 : on garde les voyages créés, l'exemple est régénéré
+  const s = seed();
+  const mine = (d.trips || []).filter(t => !t.example).map(t => ({ ...t, updatedAt: Date.now() }));
+  return mine.length ? { ...s, trips: mine } : s;
+}
+const uid = () => Math.random().toString(36).slice(2, 10);
+function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch { return null; } }
+function persist() { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch {} }
+function save() { persist(); refreshAll(); scheduleSync(); }
+let data = migrate(load());
+
+const fmt = (n, d = 0) => new Intl.NumberFormat('fr-FR', { maximumFractionDigits: d, minimumFractionDigits: d }).format(n);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const flag = cc => cc && /^[A-Z]{2}$/i.test(cc) ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '🏳️';
+const ll = p => [p.lon, p.lat];
+const gcKm = (a, b) => d3.geoDistance(ll(a), ll(b)) * 6371;
+const segKm = s => s.route?.km || gcKm(s.from, s.to);
+const fmtDate = d => d ? new Date(d + 'T12:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const samePlace = (a, b) => a && b && Math.abs(a.lat - b.lat) < .05 && Math.abs(a.lon - b.lon) < .05;
+const isHome = p => samePlace(p, data.home);
+
+/* ============================================================
+   Itinéraires réels (train : Transitous, voiture : OSRM)
+   ============================================================ */
+function decodePolyline(str, precision) {
+  const f = Math.pow(10, precision), out = [];
+  let i = 0, lat = 0, lon = 0;
+  while (i < str.length) {
+    for (const k of [0, 1]) {
+      // arithmétique classique (pas de bits) : en précision 7, les longitudes dépassent 32 bits
+      let shift = 0, result = 0, b;
+      do { b = str.charCodeAt(i++) - 63; result += (b & 0x1f) * 2 ** shift; shift += 5; } while (b >= 0x20);
+      const v = result % 2 ? -(result + 1) / 2 : result / 2;
+      if (k === 0) lat += v; else lon += v;
+    }
+    out.push([lon / f, lat / f]);
+  }
+  return out;
+}
+function thin(coords, max = 450) {
+  if (coords.length <= max) return coords;
+  const step = (coords.length - 1) / (max - 1), out = [];
+  for (let i = 0; i < max; i++) out.push(coords[Math.round(i * step)]);
+  return out;
+}
+const lineKm = c => c.reduce((s, p, i) => i ? s + d3.geoDistance(c[i - 1], p) * 6371 : 0, 0);
+const round4 = c => c.map(([x, y]) => [+x.toFixed(4), +y.toFixed(4)]);
+async function getJSON(url, ms = 15000) {
+  const ctrl = new AbortController(), t = setTimeout(() => ctrl.abort(), ms);
+  try { const r = await fetch(url, { signal: ctrl.signal }); if (!r.ok) throw new Error(r.status); return await r.json(); }
+  finally { clearTimeout(t); }
+}
+function nextTuesday() {                       // un jour de semaine à venir, pour avoir des horaires
+  const d = new Date(); d.setUTCDate(d.getUTCDate() + ((9 - d.getUTCDay()) % 7 || 7)); d.setUTCHours(7, 0, 0, 0);
+  return d.toISOString().replace('.000', '');
+}
+async function railRoute(a, b) {
+  const j = await getJSON(`https://api.transitous.org/api/v1/plan?fromPlace=${a.lat},${a.lon}&toPlace=${b.lat},${b.lon}&time=${nextTuesday()}&transitModes=RAIL,HIGHSPEED_RAIL,LONG_DISTANCE,REGIONAL_RAIL&numItineraries=1&maxPreTransitTime=3600&maxPostTransitTime=3600`, 25000);
+  // le trajet le plus rapide parmi ceux proposés
+  const it = (j.itineraries || []).sort((x, y) => x.duration - y.duration)[0]; if (!it) return null;
+  let c = [];
+  for (const l of it.legs) if (l.mode !== 'WALK' && l.legGeometry?.points) c = c.concat(decodePolyline(l.legGeometry.points, l.legGeometry.precision || 7));
+  if (c.length < 2) return null;
+  c = [ll(a), ...c, ll(b)];
+  const km = lineKm(c);
+  if (km > gcKm(a, b) * 3 + 50) return null;   // détour absurde : on ignore
+  return { c: round4(thin(c)), km, src: 'rail' };
+}
+async function roadRoute(a, b) {
+  const j = await getJSON(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`);
+  const r = j.routes?.[0]; if (!r) return null;
+  return { c: round4(thin(r.geometry.coordinates)), km: r.distance / 1000, src: 'road' };
+}
+async function computeRoute(s) {
+  if (s.mode === 'train') { try { const r = await railRoute(s.from, s.to); if (r) return r; } catch {} }
+  if (s.mode === 'train' || s.mode === 'car') { try { const r = await roadRoute(s.from, s.to); if (r) return r; } catch {} }
+  return null;
+}
+const needsRoute = s => (s.mode === 'train' || s.mode === 'car') && s.from && s.to && !s.route && !(s.routeTried > Date.now() - 864e5);
+async function ensureRoutes(trip) {
+  let changed = false;
+  for (const s of trip.segs) {
+    if (!needsRoute(s)) continue;
+    const r = await computeRoute(s);
+    if (r) s.route = r; else s.routeTried = Date.now();
+    changed = true;
+  }
+  if (changed) trip.updatedAt = Date.now();
+  return changed;
+}
+let bgRouting = false;
+async function backgroundRoutes() {
+  if (bgRouting || !navigator.onLine) return; bgRouting = true;
+  try {
+    for (const t of data.trips) if (t.segs.some(needsRoute) && await ensureRoutes(t)) save();
+  } finally { bgRouting = false; }
+}
+
+/* ============================================================
+   Pays visités, jours, visites
+   ============================================================ */
+let world = null, land = null, borders = null, countries = [], centroids = [];
+const featKey = f => NUM2A[f.id] || NOID[f.properties.name] || f.properties.name;
+const countryCache = new Map();
+function featureAt(p) {
+  const k = p[0].toFixed(3) + ',' + p[1].toFixed(3);
+  if (countryCache.has(k)) return countryCache.get(k);
+  let f = countries.find(c => d3.geoContains(c, p));
+  if (!f) { let bd = .09; centroids.forEach((c, i) => { const d = d3.geoDistance(c, p); if (d < bd) { bd = d; f = countries[i]; } }); }
+  countryCache.set(k, f || null);
+  return f || null;
+}
+const placeKey = pl => pl.cc ? pl.cc.toUpperCase() : (featureAt(ll(pl)) ? featKey(featureAt(ll(pl))) : null);
+const tripDates = t => t.segs.map(s => s.date).filter(Boolean).sort();
+
+// Map clé pays -> { trips:Set, days, first, manual }
+let visited = new Map(), visitedFeatures = [];
+function computeVisited() {
+  const m = new Map();
+  const get = k => m.get(k) || (m.set(k, { trips: new Set(), days: 0, first: null }), m.get(k));
+  for (const t of data.trips) {
+    for (const s of t.segs) for (const pl of [s.from, s.to]) {
+      if (!pl) continue; const k = placeKey(pl); if (!k) continue;
+      const e = get(k);
+      if (!isHome(pl)) e.trips.add(t.id);
+      const d = s.date || tripDates(t)[0];
+      if (d && (!e.first || d < e.first)) e.first = d;
+    }
+    // jours : du jour d'arrivée au départ suivant
+    for (let i = 0; i < t.segs.length - 1; i++) {
+      const s = t.segs[i], n = t.segs[i + 1];
+      if (!s.to || isHome(s.to) || !s.date || !n.date) continue;
+      const days = Math.max(0, Math.round((new Date(n.date) - new Date(s.date)) / 864e5));
+      const k = placeKey(s.to); if (k) get(k).days += days;
+    }
+  }
+  for (const [k, v] of Object.entries(data.manual)) if (v.on) { const e = get(k); e.manual = !m.has(k) || e.manual; }
+  visited = m;
+  visitedFeatures = countries.filter(c => visited.has(featKey(c)));
+}
+const countedKeys = () => [...visited.keys()].filter(k => !COUNTRIES[k]?.terr);
+
+/* ============================================================
+   Carte : projection hybride globe <-> planisphère
+   ============================================================ */
+const canvas = document.getElementById('map'), ctx = canvas.getContext('2d');
+let W = 0, H = 0, dpr = 1;
+let mixT = 0, projMode = 'globe', heat = false;
+const ortho = d3.geoOrthographicRaw, ne = d3.geoNaturalEarth1Raw;
+function rawMix(l, p) {
+  const a = ortho(l, p), b = ne(l, p);
+  return [a[0] + (b[0] - a[0]) * mixT, a[1] + (b[1] - a[1]) * mixT];
+}
+rawMix.invert = (x, y) => (mixT < .5 ? ortho : ne).invert(x, y);
+const proj = d3.geoProjection(rawMix).precision(0.4);
+const path = d3.geoPath(proj, ctx);
+const graticule = d3.geoGraticule10();
+const view = { rotL: -20, rotP: -30, k: 1, px: 0, py: 0, oy: 0 };   // oy : décalage quand le panneau du bas est ouvert
+const heatColor = d3.scaleSequential(d3.interpolateRgbBasis(['#ffe08a', '#ff9a3c', '#e8384f', '#8b1d5e']));
+
+const stars = Array.from({ length: 160 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.4 + .3, a: Math.random() * .7 + .2, f: Math.random() * .003 + .0005, p: Math.random() * 6 }));
+
+function resize() {
+  const r = canvas.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  W = r.width; H = r.height;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+}
+function baseScale() {
+  const gs = Math.min(W, H) / 2.3, fs = Math.min(W / 5.6, H / 2.95);
+  return { gs, fs, s: gs + (fs - gs) * mixT };
+}
+function applyView() {
+  const { s } = baseScale();
+  proj.scale(s * view.k)
+      .translate([W / 2 + view.px * mixT, H / 2 + view.py * mixT + view.oy * (1 - mixT)])
+      .rotate([view.rotL, view.rotP * (1 - mixT), 0])
+      .clipAngle(mixT > .999 ? null : 90 + 89.9 * mixT);
+}
+function centerLL() { return [-view.rotL, -view.rotP * (1 - mixT)]; }
+function visible(p) { return mixT > .5 || d3.geoDistance(p, centerLL()) < Math.PI / 2 - .02; }
+
+/* ============================================================
+   Animation de voyage
+   ============================================================ */
+let anim = null, follow = false, interacting = false, idleAt = 0, flatLat = 0;
+const ease = d3.easeCubicInOut;
+
+// Chemin le long d'une polyligne : position à p ∈ [0,1]
+function makeLine(coords) {
+  const cum = [0];
+  for (let i = 1; i < coords.length; i++) cum.push(cum[i - 1] + d3.geoDistance(coords[i - 1], coords[i]));
+  const L = cum.at(-1) || 1e-9;
+  return p => {
+    const t = Math.max(0, Math.min(1, p)) * L;
+    let lo = 0, hi = cum.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= t) lo = m; else hi = m; }
+    const f = (t - cum[lo]) / ((cum[hi] - cum[lo]) || 1);
+    return { pos: d3.geoInterpolate(coords[lo], coords[hi])(f), i: lo };
+  };
+}
+
+function flatFit(segs) {
+  const lines = { type: 'FeatureCollection', features: segs.map(s => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: s.coords } })) };
+  const c = d3.geoCentroid({ type: 'MultiPoint', coordinates: segs.flatMap(s => [s.a, s.b]) });
+  const pad = 50;
+  const tmp = d3.geoNaturalEarth1().rotate([-c[0], 0]).fitExtent([[pad, pad + 30], [W - pad, H - pad - 90]], lines);
+  const { fs } = baseScale(), cy = (pad + 30 + H - pad - 90) / 2;
+  return { rotL: -c[0], k: Math.min(tmp.scale() / fs, 24), lat: tmp.invert([W / 2, cy])[1], cy };
+}
+
+async function playTrip(trip) {
+  if (trip.segs.some(needsRoute) && navigator.onLine) {
+    toast('Calcul des itinéraires… 🛤️');
+    if (await ensureRoutes(trip)) save();
+  }
+  const segs = trip.segs.filter(s => s.from && s.to).map(s => {
+    const a = ll(s.from), b = ll(s.to), d = segKm(s);
+    const coords = s.mode !== 'plane' && s.route?.c?.length > 1 ? s.route.c : [a, b];
+    return { ...s, a, b, d, coords, line: makeLine(coords), src: s.mode === 'plane' ? null : (s.route?.src || 'direct'),
+             dur: 1600 + Math.min(d, 16000) * .26 + (coords.length > 2 ? 800 : 0) };
+  });
+  if (!segs.length) return;
+  const total = segs.reduce((x, s) => x + s.d, 0);
+  anim = { trip, segs, i: 0, t0: performance.now(), total, doneKm: 0, finished: false };
+  if (mixT > .5) { applyView(); flatLat = (proj.invert([W / 2, H / 2]) || [0, 0])[1]; }
+  follow = true; lastHud = '';
+  document.getElementById('hud').classList.add('show');
+  document.getElementById('hint').style.opacity = 0;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function stopTrip() {
+  anim = null; follow = false; idleAt = performance.now() + 2500;
+  document.getElementById('hud').classList.remove('show');
+  document.getElementById('hint').style.opacity = 1;
+}
+document.getElementById('hudClose').onclick = stopTrip;
+
+function updateAnim(now) {
+  if (!anim || anim.finished) return null;
+  const s = anim.segs[anim.i];
+  const e = Math.min(1, (now - anim.t0) / s.dur), p = ease(e);
+  if (e >= 1 && now - anim.t0 > s.dur + 450) {          // petite pause en ville
+    anim.doneKm += s.d;
+    if (anim.i < anim.segs.length - 1) { anim.i++; anim.t0 = now; }
+    else { anim.finished = true; follow = false; idleAt = now + 5000; hudFinal(); }
+  }
+  const at = s.line(p);
+  return { s, p, pos: at.pos, idx: at.i };
+}
+let lastHud = '';
+function hud(st) {
+  const s = st.s, key = anim.i + s.mode;
+  if (key !== lastHud) {
+    lastHud = key;
+    document.getElementById('hudEm').textContent = MODES[s.mode].e;
+    document.getElementById('hudRoute').textContent = `${s.from.name} → ${s.to.name}`;
+    document.getElementById('hudSub').textContent = [MODES[s.mode].label + (s.src ? ' · ' + SRC_LABEL[s.src] : ''), s.date && fmtDate(s.date), `étape ${anim.i + 1}/${anim.segs.length}`].filter(Boolean).join(' · ');
+    document.getElementById('hudTrip').textContent = anim.trip.name;
+  }
+  const km = anim.doneKm + s.d * st.p;
+  document.getElementById('hudKm').textContent = fmt(km);
+  document.getElementById('hudBar').style.width = (km / anim.total * 100) + '%';
+}
+function hudFinal() {
+  lastHud = '';
+  const cs = new Set(anim.segs.flatMap(s => [s.from.cc, s.to.cc]).filter(Boolean));
+  document.getElementById('hudEm').textContent = '🏁';
+  document.getElementById('hudRoute').textContent = `${anim.trip.name} — terminé !`;
+  document.getElementById('hudSub').textContent = `${anim.segs.length} étapes · ${cs.size} pays · ${fmt(anim.total / EARTH_KM * 100)} % du tour de la Terre`;
+  document.getElementById('hudKm').textContent = fmt(anim.total);
+  document.getElementById('hudBar').style.width = '100%';
+}
+
+/* ============================================================
+   Rendu
+   ============================================================ */
+const lerpAng = (a, b, s) => a + ((((b - a) % 360) + 540) % 360 - 180) * s;
+let last = performance.now();
+
+function frame(now) {
+  const dt = Math.min(64, now - last); last = now;
+  const st = updateAnim(now);
+  const sm = 1 - Math.exp(-dt / 220);
+
+  view.oy += ((anim ? -38 : 0) - view.oy) * sm;
+  if (follow && st) {
+    if (projMode === 'globe') {
+      const k = Math.max(1, Math.min(5, 4200 / Math.max(st.s.d, 1)));
+      view.rotL = lerpAng(view.rotL, -st.pos[0], sm);
+      view.rotP += (Math.max(-70, Math.min(70, -st.pos[1])) - view.rotP) * sm;
+      view.k += (k - view.k) * sm * .5;
+    } else {
+      // zoom en échelle log + recentrage sur la latitude visée à chaque image
+      const ft = st.s.flat ||= flatFit([st.s]);
+      view.rotL = lerpAng(view.rotL, ft.rotL, sm);
+      view.k = Math.exp(Math.log(view.k) + (Math.log(ft.k) - Math.log(view.k)) * sm);
+      view.px += -view.px * sm;
+      flatLat += (ft.lat - flatLat) * sm;
+      view.py = ft.cy - H / 2 + ne(0, flatLat * Math.PI / 180)[1] * baseScale().fs * view.k;
+    }
+  } else if (!interacting && !anim && now > idleAt && mixT < .5) {
+    view.rotL += dt * .006;                     // rotation tranquille du globe
+  }
+  if (st) hud(st);
+  draw(now, st);
+  requestAnimationFrame(frame);
+}
+
+function draw(now, st) {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  for (const s of stars) {
+    ctx.globalAlpha = s.a * (.55 + .45 * Math.sin(now * s.f + s.p));
+    ctx.fillStyle = '#fff'; ctx.fillRect(s.x * W, s.y * H, s.r, s.r);
+  }
+  ctx.globalAlpha = 1;
+  if (!world) return;
+  applyView();
+  const g = 1 - mixT, [cx, cy] = proj.translate(), r = proj.scale();
+
+  if (g > .01) {
+    const gr = ctx.createRadialGradient(cx, cy, r * .92, cx, cy, r * 1.28);
+    gr.addColorStop(0, `rgba(80,150,255,${.45 * g})`); gr.addColorStop(1, 'rgba(80,150,255,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(cx, cy, r * 1.28, 0, 7); ctx.fill();
+  }
+  ctx.beginPath(); path({ type: 'Sphere' });
+  const og = ctx.createRadialGradient(cx - r * .35 * g, cy - r * .4 * g, r * .1, cx, cy, r * (1 + 1.5 * mixT));
+  og.addColorStop(0, heat ? '#141d3d' : '#16306b'); og.addColorStop(1, '#081333');
+  ctx.fillStyle = og; ctx.fill();
+  ctx.beginPath(); path(graticule); ctx.strokeStyle = 'rgba(255,255,255,.05)'; ctx.lineWidth = .6; ctx.stroke();
+
+  ctx.beginPath(); path(land); ctx.fillStyle = heat ? '#222a44' : '#26314f'; ctx.fill();
+  if (visitedFeatures.length) {
+    if (heat) {
+      const max = heatMax();
+      heatColor.domain([0, Math.max(1, max)]);
+      for (const f of visitedFeatures) {
+        const v = visited.get(featKey(f));
+        ctx.beginPath(); path(f); ctx.fillStyle = heatColor(heatVal(v)); ctx.fill();
+      }
+    } else {
+      ctx.beginPath(); visitedFeatures.forEach(f => path(f));
+      const vg = ctx.createLinearGradient(0, 0, W, H);
+      vg.addColorStop(0, '#ffb15c'); vg.addColorStop(1, '#ff4f8b');
+      ctx.fillStyle = vg; ctx.globalAlpha = .82 + .12 * Math.sin(now / 900); ctx.fill(); ctx.globalAlpha = 1;
+    }
+  }
+  ctx.beginPath(); path(borders); ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = .5; ctx.stroke();
+  if (g > .01) { ctx.beginPath(); path({ type: 'Sphere' }); ctx.strokeStyle = `rgba(140,190,255,${.35 * g})`; ctx.lineWidth = 1; ctx.stroke(); }
+
+  // tous les trajets (discrets)
+  if (!heat) {
+    ctx.setLineDash([3, 4]); ctx.lineWidth = 1;
+    for (const t of data.trips) {
+      if (anim && anim.trip === t) continue;
+      for (const s of t.segs) {
+        if (!s.from || !s.to) continue;
+        const c = s.mode !== 'plane' && s.route?.c?.length > 1 ? s.route.c : [ll(s.from), ll(s.to)];
+        ctx.beginPath(); path({ type: 'LineString', coordinates: c });
+        ctx.strokeStyle = MODES[s.mode].color + '55'; ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+  }
+
+  // villes (en mode chaleur : halo selon le nombre de passages)
+  const cities = new Map();
+  for (const t of data.trips) for (const s of t.segs) for (const pl of [s.from, s.to]) {
+    if (!pl) continue; const k = pl.lat.toFixed(2) + ',' + pl.lon.toFixed(2);
+    const c = cities.get(k) || { pl, n: 0 }; c.n++; cities.set(k, c);
+  }
+  for (const { pl, n } of cities.values()) {
+    const p = ll(pl); if (!visible(p)) continue;
+    const [x, y] = proj(p);
+    if (heat && !isHome(pl)) {
+      const rr = 4 + Math.min(n, 8) * 2.2;
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, rr);
+      gr.addColorStop(0, 'rgba(255,240,200,.95)'); gr.addColorStop(.35, 'rgba(255,140,60,.6)'); gr.addColorStop(1, 'rgba(255,60,80,0)');
+      ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, rr, 0, 7); ctx.fill();
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(x, y, 1.8, 0, 7); ctx.fill();
+    }
+  }
+  if (anim) drawAnim(now, st);
+}
+const heatVal = v => v ? (v.days || v.trips.size || (v.manual ? 1 : 0)) : 0;
+const heatMax = () => Math.max(1, ...[...visited.values()].map(heatVal));
+
+function drawAnim(now, st) {
+  const segs = anim.segs, cur = anim.finished ? segs.length : anim.i;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let i = 0; i < cur; i++) {
+    const s = segs[i];
+    ctx.beginPath(); path({ type: 'LineString', coordinates: s.coords });
+    ctx.strokeStyle = MODES[s.mode].color; ctx.lineWidth = 2; ctx.stroke();
+  }
+  const pts = [segs[0].a, ...segs.slice(0, cur + 1).map(s => s.b)];
+  pts.forEach((p, i) => {
+    if (!visible(p) || (i === pts.length - 1 && st && st.p < 1)) return;
+    const [x, y] = proj(p), pulse = (now / 1400 + i * .3) % 1;
+    ctx.beginPath(); ctx.arc(x, y, 4 + pulse * 14, 0, 7); ctx.strokeStyle = `rgba(255,255,255,${.6 * (1 - pulse)})`; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+  });
+  ctx.font = '600 12px -apple-system,system-ui,sans-serif'; ctx.textAlign = 'left';
+  const labelled = new Set(), boxes = [];
+  [segs[0].from, ...segs.slice(0, cur + 1).map(s => s.to)].forEach((pl, i, arr) => {
+    if (i === arr.length - 1 && st && st.p < 1) return;
+    if (labelled.has(pl.name)) return; labelled.add(pl.name);
+    const p = ll(pl); if (!visible(p)) return;
+    const [x, y] = proj(p);
+    if (boxes.some(([bx, by]) => Math.abs(bx - x) < 60 && Math.abs(by - y) < 18)) return;   // évite les chevauchements
+    boxes.push([x, y]);
+    ctx.fillStyle = 'rgba(6,10,24,.7)'; const w = ctx.measureText(pl.name).width;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x + 8, y - 9, w + 10, 18, 9) : ctx.rect(x + 8, y - 9, w + 10, 18); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillText(pl.name, x + 13, y + 4);
+  });
+  if (!st) return;
+
+  const s = st.s, col = MODES[s.mode].color;
+  ctx.beginPath(); path({ type: 'LineString', coordinates: s.coords });
+  ctx.setLineDash([2, 5]); ctx.strokeStyle = col + '44'; ctx.lineWidth = 1.2; ctx.stroke(); ctx.setLineDash([]);
+  ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 10;
+  ctx.beginPath(); path({ type: 'LineString', coordinates: [...s.coords.slice(0, st.idx + 1), st.pos] });
+  ctx.strokeStyle = col; ctx.lineWidth = 2.6; ctx.stroke(); ctx.restore();
+
+  if (!visible(st.pos)) return;
+  const [x, y] = proj(st.pos);
+  const p1 = proj(s.line(st.p - .006).pos), p2 = proj(s.line(st.p + .006).pos);
+  const ang = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]);
+  if (s.mode === 'plane') {
+    const alt = Math.sin(st.p * Math.PI);
+    drawPlane(x + 4 + 10 * alt, y + 6 + 14 * alt, ang, 20 + 10 * alt, 'rgba(0,0,0,.35)');   // ombre
+    drawPlane(x, y, ang, 20 + 10 * alt, '#fff');
+  } else {
+    const bob = Math.sin(now / 90) * (s.mode === 'boat' ? 1.6 : .8);
+    ctx.beginPath(); ctx.arc(x, y, 15, 0, 7); ctx.fillStyle = col; ctx.shadowColor = col; ctx.shadowBlur = 14; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.save(); ctx.translate(x, y + bob);
+    if ((s.mode === 'car' || s.mode === 'train') && Math.cos(ang) > 0) ctx.scale(-1, 1);   // le véhicule regarde dans le bon sens
+    ctx.font = '17px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(MODES[s.mode].e, 0, 1); ctx.restore(); ctx.textBaseline = 'alphabetic';
+  }
+}
+const PLANE = [[12,0],[9,-1.7],[2,-1.7],[-4,-11],[-7,-11],[-3,-1.7],[-8,-1.7],[-11,-5],[-12.6,-5],[-11.4,0],[-12.6,5],[-11,5],[-8,1.7],[-3,1.7],[-7,11],[-4,11],[2,1.7],[9,1.7]];
+function drawPlane(x, y, ang, size, color) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(size / 24, size / 24);
+  ctx.beginPath(); PLANE.forEach(([a, b], i) => i ? ctx.lineTo(a, b) : ctx.moveTo(a, b)); ctx.closePath();
+  ctx.fillStyle = color; ctx.fill(); ctx.restore();
+}
+
+/* ============================================================
+   Interactions carte
+   ============================================================ */
+const wrap = document.getElementById('mapWrap');
+let lastZ = d3.zoomIdentity;
+const zoom = d3.zoom().scaleExtent([.7, 30]).clickDistance(6)
+  .on('start', () => { interacting = true; follow = false; })
+  .on('zoom', e => {
+    const t = e.transform;
+    if (Math.abs(t.k / lastZ.k - 1) < 1e-4) {
+      const dx = t.x - lastZ.x, dy = t.y - lastZ.y, s = proj.scale();
+      if (mixT < .5) {
+        const deg = 57.3 / s;
+        view.rotL += dx * deg; view.rotP = Math.max(-89, Math.min(89, view.rotP - dy * deg));
+      } else { view.rotL += dx * 57.3 / (.87 * s); view.py += dy; }
+    } else view.k = t.k;
+    lastZ = t;
+  })
+  .on('end', () => { interacting = false; idleAt = performance.now() + 3000; });
+// resynchronise le zoom d3 avec la vue (qui bouge aussi toute seule)
+['pointerdown', 'touchstart', 'wheel', 'mousedown'].forEach(ev =>
+  wrap.addEventListener(ev, () => { if (!interacting) { lastZ = d3.zoomIdentity.scale(view.k); canvas.__zoom = lastZ; } }, { capture: true, passive: true }));
+d3.select(canvas).call(zoom).on('dblclick.zoom', null);
+
+canvas.addEventListener('click', e => {
+  if (!world || (mixT > .05 && mixT < .95)) return;
+  const r = canvas.getBoundingClientRect();
+  const p = proj.invert([e.clientX - r.left, e.clientY - r.top]);
+  if (!p || isNaN(p[0]) || !visible(p)) return;
+  const f = countries.find(c => d3.geoContains(c, p));
+  if (!f) return;
+  const k = featKey(f), v = visited.get(k), m = data.manual[k];
+  if (m?.on) { data.manual[k] = { on: false, t: Date.now() }; save(); toast(`${cName(k)} retiré`); }
+  else if (v) toast(`${flag(k)} ${cName(k)} · ${v.days ? v.days + ' jours' : v.trips.size + ' voyage' + (v.trips.size > 1 ? 's' : '')}`);
+  else { data.manual[k] = { on: true, t: Date.now() }; save(); toast(`${flag(k)} ${cName(k)} ajouté ✨`); }
+});
+
+const sw = document.getElementById('projSwitch'), pill = sw.querySelector('.pill');
+function placePill() {
+  const b = sw.querySelector('button.on');
+  pill.style.width = b.offsetWidth + 'px';
+  pill.style.transform = `translateX(${b.offsetLeft - 4}px)`;
+}
+sw.querySelectorAll('button').forEach(b => b.onclick = () => setProj(b.dataset.mode));
+function setProj(mode) {
+  if (mode === projMode) return;
+  projMode = mode;
+  sw.querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.mode === mode));
+  placePill();
+  const from = mixT, to = mode === 'flat' ? 1 : 0, k0 = view.k, px0 = view.px, py0 = view.py, t0 = performance.now();
+  const keep = anim && follow;
+  (function step(now) {
+    const e = Math.min(1, (now - t0) / 1300), p = d3.easeCubicInOut(e);
+    mixT = from + (to - from) * p;
+    if (!keep) { view.k = k0 + (1 - k0) * p; view.px = px0 * (1 - p); view.py = py0 * (1 - p); }
+    if (e < 1) requestAnimationFrame(step);
+  })(t0);
+}
+document.getElementById('heatBtn').onclick = () => {
+  heat = !heat;
+  document.getElementById('heatBtn').classList.toggle('on', heat);
+  updateLegend();
+  toast(heat ? '🔥 Carte de chaleur : jours passés par pays' : 'Carte des pays visités');
+};
+function updateLegend() {
+  const lg = document.getElementById('legend');
+  lg.classList.toggle('show', heat);
+  const anyDays = [...visited.values()].some(v => v.days);
+  lg.firstChild.textContent = anyDays ? 'Jours passés' : 'Voyages';
+  document.getElementById('legMax').textContent = fmt(heatMax());
+}
+
+/* ============================================================
+   Statistiques
+   ============================================================ */
+function computeStats() {
+  const by = Object.fromEntries(Object.keys(MODES).map(m => [m, { n: 0, km: 0 }]));
+  let km = 0, hours = 0, longest = null, days = 0;
+  const cities = new Set(), years = {};
+  const seen = new Set();
+  const sorted = [...data.trips].sort((a, b) => (tripDates(a)[0] || '9').localeCompare(tripDates(b)[0] || '9'));
+  for (const t of sorted) {
+    const dates = tripDates(t);
+    const tdays = dates.length ? Math.round((new Date(dates.at(-1)) - new Date(dates[0])) / 864e5) + 1 : 0;
+    days += tdays;
+    const y = dates[0]?.slice(0, 4) || '—';
+    const Y = years[y] ||= { trips: 0, km: 0, days: 0, countries: new Set(), fresh: [] };
+    Y.trips++; Y.days += tdays;
+    for (const s of t.segs) {
+      if (!s.from || !s.to) continue;
+      const d = segKm(s);
+      km += d; Y.km += d; by[s.mode].n++; by[s.mode].km += d;
+      hours += d / MODES[s.mode].speed + (s.mode === 'plane' ? .6 : 0);
+      if (!longest || d > longest.d) longest = { s, d };
+      for (const p of [s.from, s.to]) {
+        if (!isHome(p)) cities.add(p.name + p.cc);
+        const k = placeKey(p); if (!k) continue;
+        if (!isHome(p)) Y.countries.add(k);
+        if (!seen.has(k)) { seen.add(k); if (!COUNTRIES[k]?.terr && !isHome(p)) Y.fresh.push(k); }
+      }
+    }
+  }
+  const conts = {};
+  for (const k of countedKeys()) { const c = COUNTRIES[k]?.cont; if (c) (conts[c] ||= []).push(k); }
+  return { by, km, hours, longest, days, years, conts, cities: cities.size, countries: countedKeys().length,
+           terr: visited.size - countedKeys().length, trips: data.trips.length };
+}
+const totalsByCont = (() => { const t = {}; for (const c of Object.values(COUNTRIES)) if (!c.terr) t[c.cont] = (t[c.cont] || 0) + 1; return t; })();
+
+function facts(S) {
+  const f = [];
+  if (S.km) {
+    f.push(['🌍', `Vous avez fait <b>${fmt(S.km / EARTH_KM, 2)} fois</b> le tour de la Terre.`]);
+    f.push(['🌙', `Vous avez parcouru <b>${fmt(S.km / MOON_KM * 100, 1)} %</b> de la distance Terre–Lune.` + (S.km < MOON_KM ? ` Encore ${fmt(MOON_KM - S.km)} km pour y arriver !` : ' Vous êtes allé sur la Lune 🚀')]);
+    f.push(['🚶', `À pied (5 km/h, sans pause), ça vous aurait pris <b>${fmt(S.km / 5 / 24)} jours</b>.`]);
+  }
+  if (S.by.plane.n) {
+    const h = S.by.plane.km / 850 + S.by.plane.n * .6;
+    f.push(['🎬', `≈ <b>${fmt(h)} h</b> passées en avion, soit environ <b>${fmt(h / 2)} films</b> regardés à bord.`]);
+    f.push(['🌱', `Vos vols représentent environ <b>${fmt(S.by.plane.km * .25 / 1000, 1)} t de CO₂</b> (≈ 250 g/km par passager).`]);
+  }
+  if (S.by.train.n) f.push(['🚄', `<b>${fmt(S.by.train.km)} km</b> en train : ${S.by.train.km > 1000 ? 'plus qu\'un Marseille–Paris aller-retour !' : 'belle balade sur les rails.'}`]);
+  if (S.by.car.n) f.push(['⛽', `<b>${fmt(S.by.car.km)} km</b> en voiture, soit ≈ ${fmt(S.by.car.km * .065)} L d'essence.`]);
+  if (S.longest) f.push(['📏', `Plus long trajet : <b>${esc(S.longest.s.from.name)} → ${esc(S.longest.s.to.name)}</b>, ${fmt(S.longest.d)} km en ${MODES[S.longest.s.mode].label.toLowerCase()}.`]);
+  const nc = Object.keys(S.conts).length;
+  if (nc) f.push(['🧭', `Vous avez posé le pied sur <b>${nc} continent${nc > 1 ? 's' : ''}</b> sur 7.` + (nc < 6 ? ` Prochain objectif : ${['AF', 'SA', 'OC', 'AS', 'NA', 'EU'].filter(c => !S.conts[c]).map(c => CONTINENTS[c][0]).slice(0, 2).join(' ou ')} ?` : '')]);
+  const top = [...visited.entries()].filter(([k, v]) => v.days).sort((a, b) => b[1].days - a[1].days)[0];
+  if (top) f.push(['❤️', `Votre pays de cœur : <b>${flag(top[0])} ${esc(cName(top[0]))}</b>, avec ${top[1].days} jours sur place.`]);
+  const yrs = Object.entries(S.years).filter(([y]) => y !== '—').sort((a, b) => b[1].km - a[1].km);
+  if (yrs.length > 1) f.push(['🏆', `Votre année record : <b>${yrs[0][0]}</b> avec ${fmt(yrs[0][1].km)} km.`]);
+  if (S.countries) f.push(['🗺️', `Il vous reste <b>${WORLD_COUNTRIES - S.countries} pays</b> à découvrir. À 2 pays par an, vous aurez fini dans ${Math.ceil((WORLD_COUNTRIES - S.countries) / 2)} ans 😅`]);
+  if (S.days) f.push(['📅', `<b>${S.days} jours</b> en voyage, soit ${fmt(S.days / 365 * 100, 1)} % d'une année.`]);
+  return f;
+}
+
+function renderStats() {
+  const S = computeStats();
+  const pct = S.countries / WORLD_COUNTRIES * 100;
+  const list = [...visited.keys()].sort((a, b) => cName(a).localeCompare(cName(b), 'fr'));
+  const yrs = Object.entries(S.years).sort((a, b) => b[0].localeCompare(a[0]));
+  const maxYearKm = Math.max(1, ...yrs.map(([, y]) => y.km));
+  const ranked = [...visited.entries()].filter(([k]) => k !== data.home.cc || visited.get(k).days)
+    .map(([k, v]) => ({ k, days: v.days, n: v.trips.size })).filter(r => r.days || r.n)
+    .sort((a, b) => b.days - a.days || b.n - a.n).slice(0, 10);
+  const maxRank = Math.max(1, ...ranked.map(r => r.days || r.n));
+  const contOrder = ['EU', 'AS', 'AF', 'NA', 'SA', 'OC'];
+  if (S.conts.AN) contOrder.push('AN');
+
+  document.getElementById('v-stats').innerHTML = `
+    <div class="grid">
+      <div class="card"><div class="lbl">Pays visités</div><div class="val" data-count="${S.countries}">0</div></div>
+      <div class="card"><div class="lbl">% du monde</div><div class="val"><span data-count="${pct}" data-dec="1">0</span><small> %</small></div></div>
+      <div class="card"><div class="lbl">Continents</div><div class="val"><span data-count="${Object.keys(S.conts).length}">0</span><small> / 7</small></div></div>
+      <div class="card"><div class="lbl">Kilomètres</div><div class="val" data-count="${S.km}">0</div></div>
+      <div class="card"><div class="lbl">Tours de la Terre</div><div class="val" data-count="${S.km / EARTH_KM}" data-dec="2">0</div></div>
+      <div class="card"><div class="lbl">Villes</div><div class="val" data-count="${S.cities}">0</div></div>
+      <div class="card"><div class="lbl">Jours en voyage</div><div class="val" data-count="${S.days}">0</div></div>
+      <div class="card"><div class="lbl">Heures de transport</div><div class="val"><span data-count="${S.hours}">0</span><small> h</small></div></div>
+      <div class="card wide"><div class="lbl">Par moyen de transport</div>
+        <div class="modes">${Object.entries(MODES).map(([m, M]) => `
+          <div><div class="e">${M.e}</div><div class="n" data-count="${S.by[m].n}">0</div><div class="k">${fmt(S.by[m].km)} km</div></div>`).join('')}
+        </div></div>
+    </div>
+
+    <h2>Continents</h2>
+    <div class="conts">${contOrder.map(c => {
+      const n = S.conts[c]?.length || 0, tot = totalsByCont[c] || 1;
+      return `<div class="cont ${n ? 'on' : ''}"><div class="h"><span>${CONTINENTS[c][1]}</span>${CONTINENTS[c][0]}</div>
+        <div class="s">${n} / ${tot} pays</div><div class="meter"><i style="width:${Math.max(n ? 3 : 0, n / tot * 100)}%"></i></div></div>`;
+    }).join('')}</div>
+
+    <h2>Par année</h2>
+    <div class="years">${yrs.map(([y, Y]) => `
+      <div class="year"><div class="h"><span class="y">${y}</span><span class="chip">${Y.trips} voyage${Y.trips > 1 ? 's' : ''}</span><span class="k">${fmt(Y.km)} km</span></div>
+        <div class="meter"><i style="width:${Y.km / maxYearKm * 100}%"></i></div>
+        <div class="chips">
+          <span class="chip">🌍 ${Y.countries.size} pays</span><span class="chip">📅 ${Y.days} jours</span>
+          ${Y.fresh.length ? `<span class="chip">✨ nouveaux : ${Y.fresh.map(flag).join(' ')}</span>` : ''}
+        </div></div>`).join('') || '<div class="empty">Ajoutez des dates à vos voyages.</div>'}
+    </div>
+
+    <h2>Top pays</h2>
+    <div class="rank">${ranked.map((r, i) => `
+      <div class="r"><span class="n">${i + 1}</span><span class="f">${flag(r.k)}</span>
+        <div class="nm">${esc(cName(r.k))}<div class="meter"><i style="width:${(r.days || r.n) / maxRank * 100}%"></i></div></div>
+        <span class="v">${r.days ? r.days + ' j' : r.n + ' voyage' + (r.n > 1 ? 's' : '')}</span></div>`).join('') || '<div class="empty">Aucun pays pour l\'instant.</div>'}
+    </div>
+
+    <h2>Le saviez-vous ?</h2>
+    <div class="facts">${facts(S).map(([i, t]) => `<div class="fact"><div class="i">${i}</div><div>${t}</div></div>`).join('') || '<div class="empty">Ajoutez un voyage pour débloquer les anecdotes.</div>'}</div>
+
+    <h2>Pays visités (${S.countries}${S.terr ? ` + ${S.terr} territoire${S.terr > 1 ? 's' : ''}` : ''})</h2>
+    <div class="countries">${list.map(k => `<span class="chip">${flag(k)} ${esc(cName(k))}</span>`).join('')}</div>
+  `;
+  countUp(document.getElementById('v-stats'));
+}
+function countUp(root) {
+  root.querySelectorAll('[data-count]').forEach(el => {
+    const to = +el.dataset.count, dec = +(el.dataset.dec || 0), t0 = performance.now();
+    (function step(now) {
+      const e = Math.min(1, (now - t0) / 1100);
+      el.textContent = fmt(to * d3.easeCubicOut(e), dec);
+      if (e < 1) requestAnimationFrame(step);
+    })(t0);
+  });
+}
+function renderHeader() {
+  const S = computeStats(), pct = S.countries / WORLD_COUNTRIES;
+  document.getElementById('hCountries').textContent = S.countries;
+  document.getElementById('hKm').textContent = fmt(S.km);
+  document.getElementById('hTours').textContent = fmt(S.km / EARTH_KM, 1);
+  document.getElementById('ringPct').textContent = fmt(pct * 100, pct < .1 ? 1 : 0) + '%';
+  const c = 2 * Math.PI * 23;
+  document.getElementById('ringArc').setAttribute('stroke-dasharray', `${Math.max(pct * c, .01)} ${c}`);
+}
+
+/* ============================================================
+   Liste des voyages
+   ============================================================ */
+function tripInfo(t) {
+  const segs = t.segs.filter(s => s.from && s.to);
+  const km = segs.reduce((x, s) => x + segKm(s), 0);
+  const dates = tripDates(t);
+  const ccs = [...new Set(segs.flatMap(s => [s.from.cc, s.to.cc]).filter(c => c && c !== data.home.cc))];
+  const stops = segs.length ? [segs[0].from.name, ...segs.map(s => s.to.name)] : [];
+  const modes = {}; segs.forEach(s => modes[s.mode] = (modes[s.mode] || 0) + 1);
+  return { km, dates, ccs, stops, modes };
+}
+function renderTrips() {
+  const el = document.getElementById('tripList');
+  const trips = [...data.trips].sort((a, b) => (tripDates(b)[0] || '').localeCompare(tripDates(a)[0] || ''));
+  if (!trips.length) { el.innerHTML = '<div class="empty">Aucun voyage pour l\'instant.<br>Touchez <b>+</b> pour ajouter le premier ✈️</div>'; return; }
+  el.innerHTML = trips.map(t => {
+    const i = tripInfo(t);
+    const d = i.dates.length ? `${fmtDate(i.dates[0])}${i.dates.length > 1 ? ' → ' + fmtDate(i.dates.at(-1)) : ''}` : 'Sans date';
+    return `<div class="trip" data-id="${esc(t.id)}">
+      <div class="acts"><button class="edit" aria-label="Modifier">✏️</button><button class="play" aria-label="Animer">▶︎</button></div>
+      <h3>${esc(t.name)} <span class="flags">${i.ccs.map(flag).join('')}</span></h3>
+      <div class="dates">${d}${t.example ? ' · exemple' : ''}</div>
+      <div class="path">${i.stops.map(esc).join(' → ')}</div>
+      <div class="chips">${Object.entries(i.modes).map(([m, n]) => `<span class="chip">${MODES[m].e} ${n}</span>`).join('')}<span class="chip">📏 ${fmt(i.km)} km</span></div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.trip').forEach(c => {
+    const t = data.trips.find(x => x.id === c.dataset.id);
+    c.onclick = e => { if (e.target.closest('.edit')) openEditor(t); else playTrip(t); };
+  });
+}
+
+/* ============================================================
+   Feuilles (éditeur, réglages)
+   ============================================================ */
+const sheet = document.getElementById('sheet'), sheetBg = document.getElementById('sheetBg');
+let draft = null;
+function openSheet() { sheet.scrollTop = 0; sheet.classList.add('show'); sheetBg.classList.add('show'); }
+function closeSheet() { sheet.classList.remove('show'); sheetBg.classList.remove('show'); draft = null; }
+sheetBg.onclick = closeSheet;
+document.getElementById('fab').onclick = () => openEditor(null);
+document.getElementById('settingsBtn').onclick = openSettings;
+
+const placeLabel = p => p ? `${p.name}${p.country ? ', ' + p.country : ''}` : '';
+function openEditor(trip) {
+  draft = trip ? structuredClone(trip) : { id: uid(), name: '', segs: [{ mode: 'plane', from: data.home, to: null, date: '' }], _new: true };
+  renderEditor(); openSheet();
+}
+function renderEditor() {
+  sheet.innerHTML = `
+    <div class="grab"></div>
+    <h3>${draft._new ? 'Nouveau voyage' : 'Modifier le voyage'}</h3>
+    <label class="field"><span>Nom du voyage</span><input id="tName" placeholder="Ex. Japon, Road trip en Provence…" value="${esc(draft.name)}"></label>
+    <div id="segs">${draft.segs.map((s, i) => `
+      <div class="seg" data-i="${i}">
+        <div class="head"><span class="num">Étape ${i + 1}</span>
+          ${Object.entries(MODES).map(([m, M]) => `<button class="mode ${s.mode === m ? 'on' : ''}" data-m="${m}" title="${M.label}">${M.e}</button>`).join('')}
+          ${draft.segs.length > 1 ? '<button class="del" aria-label="Supprimer">✕</button>' : ''}
+        </div>
+        <div class="two">
+          <label class="field ac"><span>Départ</span><input data-k="from" class="${s.from ? 'ok' : ''}" placeholder="Ville" value="${esc(placeLabel(s.from))}" autocomplete="off"></label>
+          <label class="field ac"><span>Arrivée</span><input data-k="to" class="${s.to ? 'ok' : ''}" placeholder="Ville" value="${esc(placeLabel(s.to))}" autocomplete="off"></label>
+        </div>
+        <label class="field"><span>Date</span><input type="date" data-k="date" value="${s.date || ''}"></label>
+      </div>`).join('')}
+    </div>
+    <div class="btns"><button class="btn" id="addSeg">+ Étape</button><button class="btn" id="addRet">↩︎ Retour</button></div>
+    <div class="btns"><button class="btn primary" id="saveTrip">Enregistrer</button></div>
+    ${draft._new ? '' : '<div class="btns"><button class="btn danger" id="delTrip">Supprimer ce voyage</button></div>'}
+  `;
+  sheet.querySelector('#tName').oninput = e => draft.name = e.target.value;
+  sheet.querySelectorAll('.seg').forEach(el => {
+    const s = draft.segs[+el.dataset.i];
+    el.querySelectorAll('.mode').forEach(b => b.onclick = () => {
+      if (s.mode !== b.dataset.m) { s.mode = b.dataset.m; delete s.route; delete s.routeTried; }
+      el.querySelectorAll('.mode').forEach(x => x.classList.toggle('on', x === b));
+    });
+    const del = el.querySelector('.del'); if (del) del.onclick = () => { draft.segs.splice(+el.dataset.i, 1); renderEditor(); };
+    el.querySelector('[data-k=date]').onchange = e => s.date = e.target.value;
+    el.querySelectorAll('.ac input').forEach(inp => autocomplete(inp, p => {
+      s[inp.dataset.k] = p; delete s.route; delete s.routeTried;
+      const next = draft.segs[+el.dataset.i + 1];      // l'arrivée devient le départ de l'étape suivante si vide
+      if (inp.dataset.k === 'to' && next && !next.from) { next.from = p; renderEditor(); }
+    }, () => { s[inp.dataset.k] = null; delete s.route; }));
+  });
+  sheet.querySelector('#addSeg').onclick = () => {
+    const prev = draft.segs.at(-1);
+    draft.segs.push({ mode: prev.mode === 'plane' ? 'train' : prev.mode, from: prev.to, to: null, date: prev.date || '' });
+    renderEditor(); sheet.scrollTo({ top: sheet.scrollHeight, behavior: 'smooth' });
+  };
+  sheet.querySelector('#addRet').onclick = () => {
+    const first = draft.segs[0], prev = draft.segs.at(-1);
+    if (!prev.to || !first.from) return toast('Complétez d\'abord les étapes');
+    draft.segs.push({ mode: first.mode, from: prev.to, to: first.from, date: '' });
+    renderEditor(); sheet.scrollTo({ top: sheet.scrollHeight, behavior: 'smooth' });
+  };
+  sheet.querySelector('#saveTrip').onclick = async e => {
+    if (draft.segs.some(s => !s.from || !s.to)) return toast('Choisissez chaque ville dans la liste 📍');
+    if (!draft.name.trim()) {
+      const dest = draft.segs.map(s => s.to).filter(p => !isHome(p));
+      draft.name = dest[0]?.country || dest[0]?.name || 'Voyage';
+    }
+    const btn = e.currentTarget;
+    if (draft.segs.some(needsRoute)) { btn.disabled = true; btn.textContent = 'Calcul des itinéraires… 🛤️'; await ensureRoutes(draft); }
+    const isNew = draft._new; delete draft._new; delete draft.example;
+    draft.updatedAt = Date.now();
+    const i = data.trips.findIndex(t => t.id === draft.id);
+    if (i >= 0) data.trips[i] = draft; else data.trips.push(draft);
+    const t = draft; closeSheet(); save();
+    toast(isNew ? 'Voyage ajouté ! Décollage… ✈️' : 'Voyage mis à jour');
+    setTimeout(() => playTrip(t), 450);
+  };
+  const del = sheet.querySelector('#delTrip');
+  if (del) del.onclick = () => {
+    if (!confirm('Supprimer ce voyage ?')) return;
+    data.deleted[draft.id] = Date.now();
+    data.trips = data.trips.filter(t => t.id !== draft.id);
+    if (anim) stopTrip(); closeSheet(); save();
+  };
+}
+
+/* autocomplétion de villes (Open-Meteo, gratuit, sans clé) */
+function autocomplete(inp, onPick, onClear) {
+  let timer, ul, ctrl;
+  const close = () => { ul?.remove(); ul = null; };
+  inp.addEventListener('input', () => {
+    inp.classList.remove('ok'); onClear();
+    clearTimeout(timer);
+    const q = inp.value.trim(); if (q.length < 2) return close();
+    timer = setTimeout(async () => {
+      ctrl?.abort(); ctrl = new AbortController();
+      try {
+        const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=fr&format=json`, { signal: ctrl.signal });
+        const res = ((await r.json()).results || []);
+        close();
+        if (!res.length) return;
+        ul = document.createElement('ul'); ul.className = 'sugg';
+        ul.innerHTML = res.map((x, i) => `<li data-i="${i}">${flag(x.country_code)} <b>${esc(x.name)}</b> <small>${esc([x.admin1, x.country].filter(Boolean).join(', '))}</small></li>`).join('');
+        ul.querySelectorAll('li').forEach(li => li.addEventListener('pointerdown', e => {
+          e.preventDefault();
+          const x = res[+li.dataset.i];
+          const p = { name: x.name, country: x.country, cc: x.country_code, lat: x.latitude, lon: x.longitude };
+          inp.value = placeLabel(p); inp.classList.add('ok'); close(); onPick(p);
+        }));
+        inp.parentElement.appendChild(ul);
+      } catch (e) { if (e.name !== 'AbortError') toast('Recherche indisponible (hors ligne ?)'); }
+    }, 250);
+  });
+  inp.addEventListener('blur', () => setTimeout(close, 150));
+}
+
+/* ============================================================
+   Synchronisation téléphone <-> Mac (Gist GitHub privé)
+   ============================================================ */
+let sync = (() => { try { return JSON.parse(localStorage.getItem(SYNC_KEY)); } catch { return null; } })();
+let syncState = 'off', syncMsg = '', syncAt = 0;
+const persistSync = () => { try { sync ? localStorage.setItem(SYNC_KEY, JSON.stringify(sync)) : localStorage.removeItem(SYNC_KEY); } catch {} };
+function setSyncState(s, msg = '') {
+  syncState = s; syncMsg = msg; if (s === 'ok') syncAt = Date.now();
+  document.getElementById('syncDot').className = 'dot ' + s;
+  const st = document.getElementById('syncStatus'); if (st) st.innerHTML = syncStatusHTML();
+}
+const syncStatusHTML = () => ({
+  ok: `✅ Synchronisé${syncAt ? ' à ' + new Date(syncAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''}`,
+  busy: '⏳ Synchronisation…', err: `⚠️ Erreur : ${esc(syncMsg)}`, off: 'Non connecté',
+}[syncState]);
+
+async function gh(path, opt = {}) {
+  const r = await fetch('https://api.github.com' + path, {
+    ...opt, cache: 'no-store',
+    headers: { Authorization: 'Bearer ' + sync.token, Accept: 'application/vnd.github+json', ...(opt.body ? { 'Content-Type': 'application/json' } : {}) },
+  });
+  if (r.status === 401) throw new Error('jeton refusé (401)');
+  if (r.status === 404) throw new Error('Gist introuvable (404)');
+  if (!r.ok) throw new Error('GitHub ' + r.status);
+  return r.json();
+}
+async function pull() {
+  const g = await gh('/gists/' + sync.gistId), f = g.files[GIST_FILE];
+  if (!f) return null;
+  const txt = f.truncated ? await (await fetch(f.raw_url, { cache: 'no-store' })).text() : f.content;
+  return JSON.parse(txt);
+}
+const push = d => gh('/gists/' + sync.gistId, { method: 'PATCH', body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(d) } } }) });
+
+// fusion : le plus récent gagne, voyage par voyage
+function merge(a, b) {
+  if (!b) return a;
+  b = migrate(b);
+  const deleted = { ...b.deleted };
+  for (const [k, t] of Object.entries(a.deleted || {})) deleted[k] = Math.max(t, deleted[k] || 0);
+  const trips = new Map();
+  for (const t of [...a.trips, ...b.trips]) {
+    const c = trips.get(t.id);
+    if (!c || (t.updatedAt || 0) > (c.updatedAt || 0)) trips.set(t.id, t);
+  }
+  const manual = { ...b.manual };
+  for (const [k, v] of Object.entries(a.manual || {})) if (!manual[k] || v.t > manual[k].t) manual[k] = v;
+  const homeA = (a.homeT || 0) >= (b.homeT || 0);
+  return {
+    v: 2, home: homeA ? a.home : b.home, homeT: Math.max(a.homeT || 0, b.homeT || 0),
+    deleted, manual: Object.fromEntries(Object.entries(manual).sort()),
+    trips: [...trips.values()].filter(t => !(deleted[t.id] >= (t.updatedAt || 0))).sort((x, y) => x.id.localeCompare(y.id)),
+  };
+}
+let syncing = null, syncAgain = false, syncTimer;
+function scheduleSync() { if (sync?.gistId) { clearTimeout(syncTimer); syncTimer = setTimeout(syncNow, 1200); } }
+async function syncNow() {
+  if (!sync?.gistId || !navigator.onLine) return;
+  if (syncing) { syncAgain = true; return syncing; }
+  syncing = (async () => {
+    setSyncState('busy');
+    try {
+      const remote = await pull();
+      const merged = merge(data, remote);
+      const mj = JSON.stringify(merged);
+      if (mj !== JSON.stringify(data)) { data = merged; persist(); refreshAll(); }
+      if (!remote || mj !== JSON.stringify(merge(migrate(remote), migrate(remote)))) await push(merged);
+      setSyncState('ok');
+    } catch (e) { setSyncState('err', e.message); }
+    finally { syncing = null; if (syncAgain) { syncAgain = false; syncNow(); } }
+  })();
+  return syncing;
+}
+async function connectSync(token) {
+  sync = { token: token.trim() };
+  setSyncState('busy');
+  try {
+    const gists = await gh('/gists?per_page=100');
+    let g = gists.find(x => x.files[GIST_FILE]);
+    if (!g) g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'Mes Voyages — synchronisation', public: false, files: { [GIST_FILE]: { content: JSON.stringify(data) } } }) });
+    sync.gistId = g.id; persistSync();
+    await syncNow(); toast('Synchronisation activée ☁️');
+  } catch (e) { sync = null; persistSync(); setSyncState('off'); toast('Connexion impossible : ' + e.message); }
+  if (sheet.classList.contains('show')) renderSettings();
+}
+function deviceLink() {
+  return `${location.origin}${location.pathname}#sync=${btoa(sync.token + ':' + sync.gistId)}`;
+}
+// lien « ajouter un appareil » : #sync=base64(jeton:gist)
+(function readSyncHash() {
+  const m = location.hash.match(/sync=([^&]+)/); if (!m) return;
+  try {
+    const [token, gistId] = atob(decodeURIComponent(m[1])).split(':');
+    if (token && gistId) { sync = { token, gistId }; persistSync(); }
+  } catch {}
+  history.replaceState(null, '', location.pathname + location.search);
+})();
+
+function loadQR() {
+  return window.qrcode ? Promise.resolve() : new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';
+    s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+}
+
+function openSettings() { renderSettings(); openSheet(); }
+function renderSettings() {
+  const on = !!sync?.gistId;
+  sheet.innerHTML = `
+    <div class="grab"></div>
+    <h3>Réglages</h3>
+    <h4>Ville de départ</h4>
+    <label class="field ac"><span>Utilisée pour les nouveaux voyages</span><input id="homeIn" class="ok" value="${esc(placeLabel(data.home))}" autocomplete="off"></label>
+
+    <h4>Synchronisation téléphone ↔ Mac</h4>
+    <div class="syncbox">
+      <div id="syncStatus">${syncStatusHTML()}</div>
+      ${on ? `
+        <div class="btns"><button class="btn primary" id="syncGo">↻ Synchroniser</button><button class="btn" id="addDev">📱 Ajouter un appareil</button></div>
+        <div id="devBox"></div>
+        <div class="btns"><button class="btn danger" id="syncOff">Déconnecter cet appareil</button></div>
+      ` : `
+        <p>Vos voyages sont enregistrés dans un <b>Gist privé</b> de votre compte GitHub (gratuit). À faire une seule fois :</p>
+        <ol>
+          <li><a href="https://github.com/settings/tokens/new?scopes=gist&description=Mes%20Voyages" target="_blank" rel="noopener">Créer un jeton GitHub</a> avec la seule case <b>gist</b> cochée (expiration : « No expiration »).</li>
+          <li>Collez le jeton ci-dessous et touchez « Connecter ».</li>
+          <li>Sur l'autre appareil, utilisez « Ajouter un appareil » : un QR code suffit.</li>
+        </ol>
+        <label class="field"><span>Jeton GitHub</span><input id="tokIn" type="password" placeholder="ghp_…" autocomplete="off"></label>
+        <div class="btns"><button class="btn primary" id="syncOn">Connecter</button></div>
+      `}
+    </div>
+
+    <h4>Sauvegarde</h4>
+    <div class="btns"><button class="btn" id="exp">⬇️ Exporter</button><button class="btn" id="imp">⬆️ Importer</button></div>
+  `;
+  autocomplete(sheet.querySelector('#homeIn'), p => {
+    data.home = p; data.homeT = Date.now(); save(); toast(`Départ : ${p.name} 🏠`);
+  }, () => {});
+  sheet.querySelector('#exp').onclick = exportData;
+  sheet.querySelector('#imp').onclick = () => document.getElementById('importFile').click();
+  if (on) {
+    sheet.querySelector('#syncGo').onclick = syncNow;
+    sheet.querySelector('#syncOff').onclick = () => {
+      if (!confirm('Déconnecter cet appareil ? Vos voyages restent sur l\'appareil et dans le Gist.')) return;
+      sync = null; persistSync(); setSyncState('off'); renderSettings();
+    };
+    sheet.querySelector('#addDev').onclick = async () => {
+      const box = sheet.querySelector('#devBox'), link = deviceLink();
+      box.innerHTML = `<p>Scannez ce code avec l'appareil photo de l'autre appareil, ou envoyez-vous le lien. <b>Gardez-le privé</b> : il donne accès à vos voyages.</p>
+        <div class="qr" id="qr">…</div><div class="btns"><button class="btn" id="copyLink">📋 Copier le lien</button></div>`;
+      box.querySelector('#copyLink').onclick = async () => { try { await navigator.clipboard.writeText(link); toast('Lien copié ✓'); } catch { prompt('Copiez ce lien :', link); } };
+      try { await loadQR(); const q = qrcode(0, 'M'); q.addData(link); q.make(); box.querySelector('#qr').innerHTML = q.createSvgTag({ cellSize: 4, margin: 2 }); }
+      catch { box.querySelector('#qr').textContent = 'QR indisponible hors ligne — utilisez le lien.'; }
+    };
+  } else {
+    sheet.querySelector('#syncOn').onclick = () => {
+      const v = sheet.querySelector('#tokIn').value; if (!v.trim()) return toast('Collez votre jeton GitHub');
+      connectSync(v);
+    };
+  }
+}
+
+/* ============================================================
+   Divers
+   ============================================================ */
+let toastT;
+function toast(msg) {
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2400);
+}
+function exportData() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = `voyages-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+}
+document.getElementById('importFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!Array.isArray(d.trips)) throw 0;
+    data = merge(data, d); save(); toast('Données importées ✓');
+  } catch { toast('Fichier invalide'); }
+  e.target.value = '';
+};
+
+document.querySelectorAll('nav.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('on', v.id === 'v-' + b.dataset.tab));
+  if (b.dataset.tab === 'stats') renderStats();
+});
+
+function refreshAll() {
+  computeVisited(); renderHeader(); renderTrips(); updateLegend();
+  if (document.getElementById('v-stats').classList.contains('on')) renderStats();
+}
+
+window.addEventListener('resize', () => { resize(); placePill(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
+window.addEventListener('online', () => { syncNow(); backgroundRoutes(); });
+resize(); placePill(); refreshAll();
+if (sync?.gistId) setSyncState('busy');
+requestAnimationFrame(frame);
+
+fetch('https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json').then(r => r.json()).then(topo => {
+  world = topo;
+  land = topojson.feature(topo, topo.objects.land);
+  borders = topojson.mesh(topo, topo.objects.countries, (a, b) => a !== b);
+  countries = topojson.feature(topo, topo.objects.countries).features;
+  centroids = countries.map(c => d3.geoCentroid(c));
+  refreshAll();
+}).catch(() => toast('Impossible de charger la carte'));
+
+syncNow().finally(() => backgroundRoutes());
+
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
