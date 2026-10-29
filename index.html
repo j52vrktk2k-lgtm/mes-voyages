@@ -165,7 +165,18 @@ h2{font-size:15px;margin:24px 0 10px;color:var(--muted);font-weight:600;text-tra
 .seg .mode{width:40px;height:36px;border-radius:10px;background:var(--panel2);font-size:18px;opacity:.45;transition:all .2s}
 .seg .mode.on{opacity:1;box-shadow:inset 0 0 0 2px var(--accent)}
 .seg .del{width:30px;height:30px;border-radius:50%;background:var(--panel2);color:#ff8a8a}
-.seg .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.seg .two{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:end}
+.seg .field{margin-bottom:0}
+.seg .two + .two{margin-top:8px}
+.stop{display:flex;align-items:center;justify-content:center;gap:6px;height:46px;border-radius:12px;background:var(--panel2);
+  font-size:14px;color:var(--muted);border:1px solid var(--line);transition:all .2s}
+.stop.on{color:#fff;border-color:rgba(124,196,255,.6);background:rgba(124,196,255,.15)}
+.kind{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border-radius:14px;background:var(--panel);margin-bottom:12px}
+.kind button{padding:10px;border-radius:10px;font-weight:600;color:var(--muted);transition:all .25s}
+.kind button.on{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2))}
+.chip.lived{background:rgba(141,255,168,.14);color:var(--ok)}
+.chip.holiday{background:rgba(255,177,92,.14);color:#ffcf8a}
+.chip.layover{background:rgba(124,196,255,.14);color:#9fd2ff}
 .seg .field input{background:var(--panel2)}
 .ac{position:relative}
 .ac input.ok{border-color:rgba(141,255,168,.5)}
@@ -256,6 +267,8 @@ const CONTINENTS = {
   SA: ['Amérique du Sud', '🦙'], OC: ['Océanie', '🦘'], AN: ['Antarctique', '🐧'],
 };
 const SRC_LABEL = { rail: 'tracé ferroviaire', road: 'itinéraire routier', direct: 'ligne directe' };
+const KINDS = { holiday: '🏖️ Vacances', lived: '🏠 Vécu' };
+const tripKind = t => t.kind === 'lived' ? 'lived' : 'holiday';
 
 // Table pays : code ISO-2 -> { name, cont, num, terr }
 const COUNTRIES = {}, NUM2A = {};
@@ -412,6 +425,9 @@ function featureAt(p) {
 }
 const placeKey = pl => pl.cc ? pl.cc.toUpperCase() : (featureAt(ll(pl)) ? featKey(featureAt(ll(pl))) : null);
 const tripDates = t => t.segs.map(s => s.date).filter(Boolean).sort();
+// Escale : arrivée d'une étape cochée « escale » (et jamais une vraie destination du voyage)
+const isStop = (t, pl) => !!pl && !isHome(pl) && t.segs.some(s => s.stop && samePlace(s.to, pl)) && !t.segs.some(s => !s.stop && samePlace(s.to, pl));
+const realPlaces = (t, s) => [s.from, s.to].filter(pl => pl && !isStop(t, pl));
 
 // Map clé pays -> { trips:Set, days, first, manual }
 let visited = new Map(), visitedFeatures = [];
@@ -419,8 +435,8 @@ function computeVisited() {
   const m = new Map();
   const get = k => m.get(k) || (m.set(k, { trips: new Set(), days: 0, first: null }), m.get(k));
   for (const t of data.trips) {
-    for (const s of t.segs) for (const pl of [s.from, s.to]) {
-      if (!pl) continue; const k = placeKey(pl); if (!k) continue;
+    for (const s of t.segs) for (const pl of realPlaces(t, s)) {
+      const k = placeKey(pl); if (!k) continue;
       const e = get(k);
       if (!isHome(pl)) e.trips.add(t.id);
       const d = s.date || tripDates(t)[0];
@@ -429,7 +445,7 @@ function computeVisited() {
     // jours : du jour d'arrivée au départ suivant
     for (let i = 0; i < t.segs.length - 1; i++) {
       const s = t.segs[i], n = t.segs[i + 1];
-      if (!s.to || isHome(s.to) || !s.date || !n.date) continue;
+      if (!s.to || isHome(s.to) || isStop(t, s.to) || !s.date || !n.date) continue;
       const days = Math.max(0, Math.round((new Date(n.date) - new Date(s.date)) / 864e5));
       const k = placeKey(s.to); if (k) get(k).days += days;
     }
@@ -517,7 +533,7 @@ async function playTrip(trip) {
   const segs = trip.segs.filter(s => s.from && s.to).map(s => {
     const a = ll(s.from), b = ll(s.to), d = segKm(s);
     const coords = s.mode !== 'plane' && s.route?.c?.length > 1 ? s.route.c : [a, b];
-    return { ...s, a, b, d, coords, line: makeLine(coords), src: s.mode === 'plane' ? null : (s.route?.src || 'direct'),
+    return { ...s, a, b, d, coords, line: makeLine(coords), src: s.mode === 'plane' ? null : (s.route?.src || 'direct'), layover: isStop(trip, s.to),
              dur: 1600 + Math.min(d, 16000) * .26 + (coords.length > 2 ? 800 : 0) };
   });
   if (!segs.length) return;
@@ -540,7 +556,7 @@ function updateAnim(now) {
   if (!anim || anim.finished) return null;
   const s = anim.segs[anim.i];
   const e = Math.min(1, (now - anim.t0) / s.dur), p = ease(e);
-  if (e >= 1 && now - anim.t0 > s.dur + 450) {          // petite pause en ville
+  if (e >= 1 && now - anim.t0 > s.dur + (s.layover ? 150 : 450)) {   // petite pause en ville (plus courte en escale)
     anim.doneKm += s.d;
     if (anim.i < anim.segs.length - 1) { anim.i++; anim.t0 = now; }
     else { anim.finished = true; follow = false; idleAt = now + 5000; hudFinal(); }
@@ -554,7 +570,7 @@ function hud(st) {
   if (key !== lastHud) {
     lastHud = key;
     document.getElementById('hudEm').textContent = MODES[s.mode].e;
-    document.getElementById('hudRoute').textContent = `${s.from.name} → ${s.to.name}`;
+    document.getElementById('hudRoute').textContent = `${s.from.name} → ${s.to.name}${s.layover ? ' (escale)' : ''}`;
     document.getElementById('hudSub').textContent = [MODES[s.mode].label + (s.src ? ' · ' + SRC_LABEL[s.src] : ''), s.date && fmtDate(s.date), `étape ${anim.i + 1}/${anim.segs.length}`].filter(Boolean).join(' · ');
     document.getElementById('hudTrip').textContent = anim.trip.name;
   }
@@ -564,7 +580,7 @@ function hud(st) {
 }
 function hudFinal() {
   lastHud = '';
-  const cs = new Set(anim.segs.flatMap(s => [s.from.cc, s.to.cc]).filter(Boolean));
+  const cs = new Set(anim.segs.flatMap(s => realPlaces(anim.trip, s).map(p => p.cc)).filter(Boolean));
   document.getElementById('hudEm').textContent = '🏁';
   document.getElementById('hudRoute').textContent = `${anim.trip.name} — terminé !`;
   document.getElementById('hudSub').textContent = `${anim.segs.length} étapes · ${cs.size} pays · ${fmt(anim.total / EARTH_KM * 100)} % du tour de la Terre`;
@@ -826,7 +842,7 @@ function updateLegend() {
 function computeStats() {
   const by = Object.fromEntries(Object.keys(MODES).map(m => [m, { n: 0, km: 0 }]));
   let km = 0, hours = 0, longest = null, days = 0;
-  const cities = new Set(), years = {};
+  const cities = new Set(), years = {}, kinds = { holiday: { n: 0, days: 0 }, lived: { n: 0, days: 0 } };
   const seen = new Set();
   const sorted = [...data.trips].sort((a, b) => (tripDates(a)[0] || '9').localeCompare(tripDates(b)[0] || '9'));
   for (const t of sorted) {
@@ -836,13 +852,14 @@ function computeStats() {
     const y = dates[0]?.slice(0, 4) || '—';
     const Y = years[y] ||= { trips: 0, km: 0, days: 0, countries: new Set(), fresh: [] };
     Y.trips++; Y.days += tdays;
+    kinds[tripKind(t)].n++; kinds[tripKind(t)].days += tdays;
     for (const s of t.segs) {
       if (!s.from || !s.to) continue;
       const d = segKm(s);
       km += d; Y.km += d; by[s.mode].n++; by[s.mode].km += d;
       hours += d / MODES[s.mode].speed + (s.mode === 'plane' ? .6 : 0);
       if (!longest || d > longest.d) longest = { s, d };
-      for (const p of [s.from, s.to]) {
+      for (const p of realPlaces(t, s)) {
         if (!isHome(p)) cities.add(p.name + p.cc);
         const k = placeKey(p); if (!k) continue;
         if (!isHome(p)) Y.countries.add(k);
@@ -852,7 +869,7 @@ function computeStats() {
   }
   const conts = {};
   for (const k of countedKeys()) { const c = COUNTRIES[k]?.cont; if (c) (conts[c] ||= []).push(k); }
-  return { by, km, hours, longest, days, years, conts, cities: cities.size, countries: countedKeys().length,
+  return { by, km, hours, longest, days, years, conts, kinds, cities: cities.size, countries: countedKeys().length,
            terr: visited.size - countedKeys().length, trips: data.trips.length };
 }
 const totalsByCont = (() => { const t = {}; for (const c of Object.values(COUNTRIES)) if (!c.terr) t[c.cont] = (t[c.cont] || 0) + 1; return t; })();
@@ -906,6 +923,8 @@ function renderStats() {
       <div class="card"><div class="lbl">Villes</div><div class="val" data-count="${S.cities}">0</div></div>
       <div class="card"><div class="lbl">Jours en voyage</div><div class="val" data-count="${S.days}">0</div></div>
       <div class="card"><div class="lbl">Heures de transport</div><div class="val"><span data-count="${S.hours}">0</span><small> h</small></div></div>
+      <div class="card"><div class="lbl">🏖️ Vacances</div><div class="val"><span data-count="${S.kinds.holiday.n}">0</span><small> voyage${S.kinds.holiday.n > 1 ? 's' : ''} · ${S.kinds.holiday.days} j</small></div></div>
+      <div class="card"><div class="lbl">🏠 Vécu</div><div class="val"><span data-count="${S.kinds.lived.n}">0</span><small> voyage${S.kinds.lived.n > 1 ? 's' : ''} · ${S.kinds.lived.days} j</small></div></div>
       <div class="card wide"><div class="lbl">Par moyen de transport</div>
         <div class="modes">${Object.entries(MODES).map(([m, M]) => `
           <div><div class="e">${M.e}</div><div class="n" data-count="${S.by[m].n}">0</div><div class="k">${fmt(S.by[m].km)} km</div></div>`).join('')}
@@ -971,8 +990,8 @@ function tripInfo(t) {
   const segs = t.segs.filter(s => s.from && s.to);
   const km = segs.reduce((x, s) => x + segKm(s), 0);
   const dates = tripDates(t);
-  const ccs = [...new Set(segs.flatMap(s => [s.from.cc, s.to.cc]).filter(c => c && c !== data.home.cc))];
-  const stops = segs.length ? [segs[0].from.name, ...segs.map(s => s.to.name)] : [];
+  const ccs = [...new Set(segs.flatMap(s => realPlaces(t, s).map(p => p.cc)).filter(c => c && c !== data.home.cc))];
+  const stops = segs.length ? [esc(segs[0].from.name), ...segs.map(s => isStop(t, s.to) ? `<span class="chip layover">🛬 ${esc(s.to.name)}</span>` : esc(s.to.name))] : [];
   const modes = {}; segs.forEach(s => modes[s.mode] = (modes[s.mode] || 0) + 1);
   return { km, dates, ccs, stops, modes };
 }
@@ -987,8 +1006,8 @@ function renderTrips() {
       <div class="acts"><button class="edit" aria-label="Modifier">✏️</button><button class="play" aria-label="Animer">▶︎</button></div>
       <h3>${esc(t.name)} <span class="flags">${i.ccs.map(flag).join('')}</span></h3>
       <div class="dates">${d}${t.example ? ' · exemple' : ''}</div>
-      <div class="path">${i.stops.map(esc).join(' → ')}</div>
-      <div class="chips">${Object.entries(i.modes).map(([m, n]) => `<span class="chip">${MODES[m].e} ${n}</span>`).join('')}<span class="chip">📏 ${fmt(i.km)} km</span></div>
+      <div class="path">${i.stops.join(' → ')}</div>
+      <div class="chips"><span class="chip ${tripKind(t)}">${KINDS[tripKind(t)]}</span>${Object.entries(i.modes).map(([m, n]) => `<span class="chip">${MODES[m].e} ${n}</span>`).join('')}<span class="chip">📏 ${fmt(i.km)} km</span></div>
     </div>`;
   }).join('');
   el.querySelectorAll('.trip').forEach(c => {
@@ -1010,13 +1029,14 @@ document.getElementById('settingsBtn').onclick = openSettings;
 
 const placeLabel = p => p ? `${p.name}${p.country ? ', ' + p.country : ''}` : '';
 function openEditor(trip) {
-  draft = trip ? structuredClone(trip) : { id: uid(), name: '', segs: [{ mode: 'plane', from: data.home, to: null, date: '' }], _new: true };
+  draft = trip ? structuredClone(trip) : { id: uid(), name: '', kind: 'holiday', segs: [{ mode: 'plane', from: data.home, to: null, date: '' }], _new: true };
   renderEditor(); openSheet();
 }
 function renderEditor() {
   sheet.innerHTML = `
     <div class="grab"></div>
     <h3>${draft._new ? 'Nouveau voyage' : 'Modifier le voyage'}</h3>
+    <div class="kind" id="tKind">${Object.entries(KINDS).map(([k, l]) => `<button data-k="${k}" class="${tripKind(draft) === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <label class="field"><span>Nom du voyage</span><input id="tName" placeholder="Ex. Japon, Road trip en Provence…" value="${esc(draft.name)}"></label>
     <div id="segs">${draft.segs.map((s, i) => `
       <div class="seg" data-i="${i}">
@@ -1028,7 +1048,10 @@ function renderEditor() {
           <label class="field ac"><span>Départ</span><input data-k="from" class="${s.from ? 'ok' : ''}" placeholder="Ville" value="${esc(placeLabel(s.from))}" autocomplete="off"></label>
           <label class="field ac"><span>Arrivée</span><input data-k="to" class="${s.to ? 'ok' : ''}" placeholder="Ville" value="${esc(placeLabel(s.to))}" autocomplete="off"></label>
         </div>
-        <label class="field"><span>Date</span><input type="date" data-k="date" value="${s.date || ''}"></label>
+        <div class="two">
+          <label class="field"><span>Date</span><input type="date" data-k="date" value="${s.date || ''}"></label>
+          <button class="stop ${s.stop ? 'on' : ''}" title="L'arrivée est une simple escale : le pays ne compte pas">${s.stop ? '☑︎' : '☐'} 🛬 Escale</button>
+        </div>
       </div>`).join('')}
     </div>
     <div class="btns"><button class="btn" id="addSeg">+ Étape</button><button class="btn" id="addRet">↩︎ Retour</button></div>
@@ -1036,6 +1059,10 @@ function renderEditor() {
     ${draft._new ? '' : '<div class="btns"><button class="btn danger" id="delTrip">Supprimer ce voyage</button></div>'}
   `;
   sheet.querySelector('#tName').oninput = e => draft.name = e.target.value;
+  sheet.querySelectorAll('#tKind button').forEach(b => b.onclick = () => {
+    draft.kind = b.dataset.k;
+    sheet.querySelectorAll('#tKind button').forEach(x => x.classList.toggle('on', x === b));
+  });
   sheet.querySelectorAll('.seg').forEach(el => {
     const s = draft.segs[+el.dataset.i];
     el.querySelectorAll('.mode').forEach(b => b.onclick = () => {
@@ -1044,6 +1071,11 @@ function renderEditor() {
     });
     const del = el.querySelector('.del'); if (del) del.onclick = () => { draft.segs.splice(+el.dataset.i, 1); renderEditor(); };
     el.querySelector('[data-k=date]').onchange = e => s.date = e.target.value;
+    el.querySelector('.stop').onclick = e => {
+      s.stop = !s.stop; if (!s.stop) delete s.stop;
+      e.currentTarget.classList.toggle('on', !!s.stop);
+      e.currentTarget.innerHTML = `${s.stop ? '☑︎' : '☐'} 🛬 Escale`;
+    };
     el.querySelectorAll('.ac input').forEach(inp => autocomplete(inp, p => {
       s[inp.dataset.k] = p; delete s.route; delete s.routeTried;
       const next = draft.segs[+el.dataset.i + 1];      // l'arrivée devient le départ de l'étape suivante si vide
@@ -1064,7 +1096,7 @@ function renderEditor() {
   sheet.querySelector('#saveTrip').onclick = async e => {
     if (draft.segs.some(s => !s.from || !s.to)) return toast('Choisissez chaque ville dans la liste 📍');
     if (!draft.name.trim()) {
-      const dest = draft.segs.map(s => s.to).filter(p => !isHome(p));
+      const dest = draft.segs.map(s => s.to).filter(p => !isHome(p) && !isStop(draft, p));
       draft.name = dest[0]?.country || dest[0]?.name || 'Voyage';
     }
     const btn = e.currentTarget;

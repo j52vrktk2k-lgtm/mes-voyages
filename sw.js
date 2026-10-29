@@ -1,5 +1,5 @@
 // Cache simple pour que l'app s'ouvre même hors ligne
-const CACHE = 'voyage-v2';
+const CACHE = 'voyage-v3';
 const ASSETS = [
   './', 'index.html', 'countries.js', 'manifest.json', 'icon.svg',
   'https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js',
